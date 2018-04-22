@@ -26,6 +26,7 @@
 #include <config.h>
 #endif
 
+#include <usbmuxd.h>
 #ifdef HAVE_OPENSSL
 #include <openssl/ssl.h>
 #else
