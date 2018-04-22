@@ -236,6 +236,11 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_new(idevice_t * device, const char 
 		dev->udid = strdup(muxdev.udid);
 		dev->conn_type = CONNECTION_USBMUXD;
 		dev->conn_data = (void*)(long)muxdev.handle;
+                dev->usbmuxd = usbmuxd_init();
+                if (!dev->usbmuxd) {
+                    debug_info("ERROR: Unable to allocate usbmuxd context");
+                    return IDEVICE_E_UNKNOWN_ERROR;
+                }
 		*device = dev;
 		return IDEVICE_E_SUCCESS;
 	}
@@ -260,6 +265,10 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_free(idevice_t device)
 	if (device->conn_data) {
 		free(device->conn_data);
 	}
+
+        usbmuxd_uninit(device->usbmuxd);
+        device->usbmuxd = NULL;
+
 	free(device);
 	return ret;
 }
