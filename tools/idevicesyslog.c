@@ -57,19 +57,20 @@ static void syslog_callback(char c, void *user_data)
 
 static int start_logging(void)
 {
+#if 0
 	idevice_error_t ret = idevice_new(&device, udid);
 	if (ret != IDEVICE_E_SUCCESS) {
 		fprintf(stderr, "Device with udid %s not found!?\n", udid);
 		return -1;
 	}
-
+#endif
 	/* start and connect to syslog_relay service */
 	syslog_relay_error_t serr = SYSLOG_RELAY_E_UNKNOWN_ERROR;
 	serr = syslog_relay_client_start_service(device, &syslog, "idevicesyslog");
 	if (serr != SYSLOG_RELAY_E_SUCCESS) {
 		fprintf(stderr, "ERROR: Could not start service com.apple.syslog_relay.\n");
-		idevice_free(device);
-		device = NULL;
+		//idevice_free(device);
+		//device = NULL;
 		return -1;
 	}
 
@@ -79,8 +80,8 @@ static int start_logging(void)
 		fprintf(stderr, "ERROR: Unable tot start capturing syslog.\n");
 		syslog_relay_client_free(syslog);
 		syslog = NULL;
-		idevice_free(device);
-		device = NULL;
+		//idevice_free(device);
+		//device = NULL;
 		return -1;
 	}
 
@@ -99,10 +100,12 @@ static void stop_logging(void)
 		syslog = NULL;
 	}
 
+#if 0
 	if (device) {
 		idevice_free(device);
 		device = NULL;
 	}
+#endif
 }
 
 static void device_event_cb(const idevice_event_t* event, void* userdata)
@@ -173,7 +176,13 @@ int main(int argc, char *argv[])
 
 	int num = 0;
 	char **devices = NULL;
-	idevice_get_device_list(&devices, &num);
+
+	idevice_error_t ret = idevice_new(&device, udid);
+	if (ret != IDEVICE_E_SUCCESS) {
+		fprintf(stderr, "Device with udid %s not found!?\n", udid);
+		return -1;
+	}
+	idevice_get_device_list(device, &devices, &num);
 	idevice_device_list_free(devices);
 	if (num == 0) {
 		if (!udid) {
@@ -184,14 +193,15 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	idevice_event_subscribe(device_event_cb, NULL);
+	idevice_event_subscribe(device, device_event_cb, NULL);
 
 	while (!quit_flag) {
 		sleep(1);
 	}
-	idevice_event_unsubscribe();
+	idevice_event_unsubscribe(device);
 	stop_logging();
 
+        idevice_free(device);
 	if (udid) {
 		free(udid);
 	}

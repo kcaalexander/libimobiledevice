@@ -182,7 +182,15 @@ const char *userpref_get_config_dir()
  */
 int userpref_read_system_buid(char **system_buid)
 {
-	int res = usbmuxd_read_buid(system_buid);
+        int res;
+        usbmuxd_t *usbmuxd = usbmuxd_init();
+
+        if (!usbmuxd) {
+            debug_info("ERROR: Can't initialize usbmuxd context");
+            return -1;
+        }
+
+	res = usbmuxd_read_buid(usbmuxd, system_buid);
 	if (res == 0) {
 		debug_info("using %s as %s", *system_buid, USERPREF_SYSTEM_BUID_KEY);
 	} else {
@@ -282,10 +290,15 @@ userpref_error_t userpref_save_pair_record(const char *udid, plist_t pair_record
 {
 	char* record_data = NULL;
 	uint32_t record_size = 0;
+        usbmuxd_t *usbmuxd = usbmuxd_init();
 
+        if (!usbmuxd) {
+            debug_info("ERROR: Can't initialize usbmuxd context");
+            return USERPREF_E_UNKNOWN_ERROR;
+        }
 	plist_to_bin(pair_record, &record_data, &record_size);
 
-	int res = usbmuxd_save_pair_record(udid, record_data, record_size);
+	int res = usbmuxd_save_pair_record(usbmuxd, udid, record_data, record_size);
 
 	free(record_data);
 
@@ -305,8 +318,14 @@ userpref_error_t userpref_read_pair_record(const char *udid, plist_t *pair_recor
 {
 	char* record_data = NULL;
 	uint32_t record_size = 0;
+        usbmuxd_t *usbmuxd = usbmuxd_init();
 
-	int res = usbmuxd_read_pair_record(udid, &record_data, &record_size);
+        if (!usbmuxd) {
+            debug_info("ERROR: Can't initialize usbmuxd context");
+            return USERPREF_E_UNKNOWN_ERROR;
+        }
+
+	int res = usbmuxd_read_pair_record(usbmuxd, udid, &record_data, &record_size);
 
 	if (res < 0) {
 		if (record_data)
@@ -336,7 +355,14 @@ userpref_error_t userpref_read_pair_record(const char *udid, plist_t *pair_recor
  */
 userpref_error_t userpref_delete_pair_record(const char *udid)
 {
-	int res = usbmuxd_delete_pair_record(udid);
+        usbmuxd_t *usbmuxd = usbmuxd_init();
+
+        if (!usbmuxd) {
+            debug_info("ERROR: Can't initialize usbmuxd context");
+            return USERPREF_E_UNKNOWN_ERROR;
+        }
+
+	int res = usbmuxd_delete_pair_record(usbmuxd, udid);
 
 	return res == 0 ? USERPREF_E_SUCCESS: USERPREF_E_UNKNOWN_ERROR;
 }

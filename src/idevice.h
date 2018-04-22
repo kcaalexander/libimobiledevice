@@ -70,6 +70,7 @@ struct idevice_connection_private {
 	char *udid;
 	enum connection_type type;
 	void *data;
+        usbmuxd_t *usbmuxd;
 	ssl_data_t ssl_data;
 };
 

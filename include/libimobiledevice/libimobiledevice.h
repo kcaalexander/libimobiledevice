@@ -34,6 +34,8 @@ extern "C" {
 #include <sys/stat.h>
 #include <plist/plist.h>
 
+#include <usbmuxd.h>
+
 /** Error Codes */
 typedef enum {
 	IDEVICE_E_SUCCESS         =  0,
@@ -83,34 +85,42 @@ void idevice_set_debug_level(int level);
  * Register a callback function that will be called when device add/remove
  * events occur.
  *
+ * @param device Previously allocated idevice_t context.
  * @param callback Callback function to call.
  * @param user_data Application-specific data passed as parameter
  *   to the registered callback function.
  *
  * @return IDEVICE_E_SUCCESS on success or an error value when an error occured.
  */
-idevice_error_t idevice_event_subscribe(idevice_event_cb_t callback, void *user_data);
+idevice_error_t idevice_event_subscribe(idevice_t device,
+                                        idevice_event_cb_t callback,
+                                        void *user_data);
 
 /**
  * Release the event callback function that has been registered with
  *  idevice_event_subscribe().
  *
+ * @param device Previously allocated idevice_t context.
+ *
  * @return IDEVICE_E_SUCCESS on success or an error value when an error occured.
  */
-idevice_error_t idevice_event_unsubscribe(void);
+idevice_error_t idevice_event_unsubscribe(idevice_t device);
 
 /* discovery (synchronous) */
 
 /**
  * Get a list of currently available devices.
  *
+ * @param device Previously allocated idevice_t context.
  * @param devices List of udids of devices that are currently available.
  *   This list is terminated by a NULL pointer.
  * @param count Number of devices found.
  *
  * @return IDEVICE_E_SUCCESS on success or an error value when an error occured.
  */
-idevice_error_t idevice_get_device_list(char ***devices, int *count);
+idevice_error_t idevice_get_device_list(idevice_t device,
+                                        char ***devices,
+                                        int *count);
 
 /**
  * Free a list of device udids.

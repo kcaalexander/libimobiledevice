@@ -49,6 +49,7 @@
 #include "common/userpref.h"
 #include "common/thread.h"
 #include "common/debug.h"
+#include "libimobiledevice/libimobiledevice.h"
 
 #ifdef HAVE_OPENSSL
 static mutex_t *mutex_buf = NULL;
@@ -156,10 +157,15 @@ static void usbmux_event_cb(const usbmuxd_event_t *event, void *user_data)
 	}
 }
 
-LIBIMOBILEDEVICE_API idevice_error_t idevice_event_subscribe(idevice_event_cb_t callback, void *user_data)
+LIBIMOBILEDEVICE_API idevice_error_t idevice_event_subscribe(idevice_t device,
+                                                             idevice_event_cb_t callback,
+                                                             void *user_data)
 {
+        if (!device)
+          return IDEVICE_E_INVALID_ARG;
+
 	event_cb = callback;
-	int res = usbmuxd_subscribe(usbmux_event_cb, user_data);
+	int res = usbmuxd_subscribe(device->usbmuxd, usbmux_event_cb, user_data);
 	if (res != 0) {
 		event_cb = NULL;
 		debug_info("ERROR: usbmuxd_subscribe() returned %d!", res);
@@ -168,10 +174,13 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_event_subscribe(idevice_event_cb_t 
 	return IDEVICE_E_SUCCESS;
 }
 
-LIBIMOBILEDEVICE_API idevice_error_t idevice_event_unsubscribe(void)
+LIBIMOBILEDEVICE_API idevice_error_t idevice_event_unsubscribe(idevice_t device)
 {
+        if (!device)
+          return IDEVICE_E_INVALID_ARG;
+
 	event_cb = NULL;
-	int res = usbmuxd_unsubscribe();
+	int res = usbmuxd_unsubscribe(device->usbmuxd);
 	if (res != 0) {
 		debug_info("ERROR: usbmuxd_unsubscribe() returned %d!", res);
 		return IDEVICE_E_UNKNOWN_ERROR;
@@ -179,14 +188,20 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_event_unsubscribe(void)
 	return IDEVICE_E_SUCCESS;
 }
 
-LIBIMOBILEDEVICE_API idevice_error_t idevice_get_device_list(char ***devices, int *count)
+LIBIMOBILEDEVICE_API idevice_error_t idevice_get_device_list(idevice_t device,
+                                                             char ***devices,
+                                                             int *count)
 {
 	usbmuxd_device_info_t *dev_list;
 
 	*devices = NULL;
 	*count = 0;
 
-	if (usbmuxd_get_device_list(&dev_list) < 0) {
+        if (!device)
+            return IDEVICE_E_INVALID_ARG;
+
+
+	if (usbmuxd_get_device_list(device->usbmuxd, &dev_list) < 0) {
 		debug_info("ERROR: usbmuxd is not running!", __func__);
 		return IDEVICE_E_NO_DEVICE;
 	}
@@ -199,7 +214,7 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_get_device_list(char ***devices, in
 		newlist[newcount++] = strdup(dev_list[i].udid);
 		*devices = newlist;
 	}
-	usbmuxd_device_list_free(&dev_list);
+	usbmuxd_device_list_free(device->usbmuxd, &dev_list);
 
 	*count = newcount;
 	newlist = realloc(*devices, sizeof(char*) * (newcount+1));
@@ -227,20 +242,22 @@ LIBIMOBILEDEVICE_API void idevice_set_debug_level(int level)
 	internal_set_debug_level(level);
 }
 
-LIBIMOBILEDEVICE_API idevice_error_t idevice_new(idevice_t * device, const char *udid)
+LIBIMOBILEDEVICE_API idevice_error_t idevice_new(idevice_t *device, const char *udid)
 {
 	usbmuxd_device_info_t muxdev;
-	int res = usbmuxd_get_device_by_udid(udid, &muxdev);
+        usbmuxd_t *usbmuxd = usbmuxd_init();
+        if (!usbmuxd) {
+            debug_info("ERROR: Unable to allocate usbmuxd context");
+            return IDEVICE_E_UNKNOWN_ERROR;
+        }
+
+	int res = usbmuxd_get_device_by_udid(usbmuxd, udid, &muxdev);
 	if (res > 0) {
 		idevice_t dev = (idevice_t) malloc(sizeof(struct idevice_private));
 		dev->udid = strdup(muxdev.udid);
 		dev->conn_type = CONNECTION_USBMUXD;
 		dev->conn_data = (void*)(long)muxdev.handle;
-                dev->usbmuxd = usbmuxd_init();
-                if (!dev->usbmuxd) {
-                    debug_info("ERROR: Unable to allocate usbmuxd context");
-                    return IDEVICE_E_UNKNOWN_ERROR;
-                }
+                dev->usbmuxd = usbmuxd;
 		*device = dev;
 		return IDEVICE_E_SUCCESS;
 	}
@@ -280,12 +297,14 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_connect(idevice_t device, uint16_t 
 	}
 
 	if (device->conn_type == CONNECTION_USBMUXD) {
-		int sfd = usbmuxd_connect((uint32_t)(long)device->conn_data, port);
+		int sfd = usbmuxd_connect(device->usbmuxd,
+                                          (uint32_t)(long)device->conn_data, port);
 		if (sfd < 0) {
 			debug_info("ERROR: Connecting to usbmuxd failed: %d (%s)", sfd, strerror(-sfd));
 			return IDEVICE_E_UNKNOWN_ERROR;
 		}
 		idevice_connection_t new_connection = (idevice_connection_t)malloc(sizeof(struct idevice_connection_private));
+                new_connection->usbmuxd = device->usbmuxd;
 		new_connection->type = CONNECTION_USBMUXD;
 		new_connection->data = (void*)(long)sfd;
 		new_connection->ssl_data = NULL;
@@ -310,7 +329,7 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_disconnect(idevice_connection_t con
 	}
 	idevice_error_t result = IDEVICE_E_UNKNOWN_ERROR;
 	if (connection->type == CONNECTION_USBMUXD) {
-		usbmuxd_disconnect((int)(long)connection->data);
+		usbmuxd_disconnect(connection->usbmuxd, (int)(long)connection->data);
 		connection->data = NULL;
 		result = IDEVICE_E_SUCCESS;
 	} else {
@@ -320,6 +339,7 @@ LIBIMOBILEDEVICE_API idevice_error_t idevice_disconnect(idevice_connection_t con
 	if (connection->udid)
 		free(connection->udid);
 
+        connection->usbmuxd = NULL;
 	free(connection);
 	connection = NULL;
 
@@ -336,7 +356,9 @@ static idevice_error_t internal_connection_send(idevice_connection_t connection,
 	}
 
 	if (connection->type == CONNECTION_USBMUXD) {
-		int res = usbmuxd_send((int)(long)connection->data, data, len, sent_bytes);
+		int res = usbmuxd_send(connection->usbmuxd,
+                                       (int)(long)connection->data,
+                                       data, len, sent_bytes);
 		if (res < 0) {
 			debug_info("ERROR: usbmuxd_send returned %d (%s)", res, strerror(-res));
 			return IDEVICE_E_UNKNOWN_ERROR;
@@ -383,7 +405,9 @@ static idevice_error_t internal_connection_receive_timeout(idevice_connection_t 
 	}
 
 	if (connection->type == CONNECTION_USBMUXD) {
-		int res = usbmuxd_recv_timeout((int)(long)connection->data, data, len, recv_bytes, timeout);
+		int res = usbmuxd_recv_timeout(connection->usbmuxd,
+                                               (int)(long)connection->data,
+                                               data, len, recv_bytes, timeout);
 		if (res < 0) {
 			debug_info("ERROR: usbmuxd_recv_timeout returned %d (%s)", res, strerror(-res));
 			return IDEVICE_E_UNKNOWN_ERROR;
@@ -436,7 +460,9 @@ static idevice_error_t internal_connection_receive(idevice_connection_t connecti
 	}
 
 	if (connection->type == CONNECTION_USBMUXD) {
-		int res = usbmuxd_recv((int)(long)connection->data, data, len, recv_bytes);
+		int res = usbmuxd_recv(connection->usbmuxd,
+                                       (int)(long)connection->data,
+                                       data, len, recv_bytes);
 		if (res < 0) {
 			debug_info("ERROR: usbmuxd_recv returned %d (%s)", res, strerror(-res));
 			return IDEVICE_E_UNKNOWN_ERROR;

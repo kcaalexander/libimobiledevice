@@ -119,7 +119,8 @@ int main(int argc, char **argv)
 		return ret;
 	case MODE_LIST_DEVICES:
 	default:
-		if (idevice_get_device_list(&dev_list, &i) < 0) {
+		idevice_new(&device, udid);
+		if (idevice_get_device_list(device, &dev_list, &i) < 0) {
 			fprintf(stderr, "ERROR: Unable to retrieve device list!\n");
 			return -1;
 		}
@@ -127,6 +128,7 @@ int main(int argc, char **argv)
 			printf("%s\n", dev_list[i]);
 		}
 		idevice_device_list_free(dev_list);
+		idevice_free(device);
 		return 0;
 	}
 }
