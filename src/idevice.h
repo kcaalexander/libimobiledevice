@@ -83,6 +83,7 @@ struct idevice_private {
 	enum connection_type conn_type;
 	void *conn_data;
         usbmuxd_t *usbmuxd;
+	int version;
 };
 
 #endif

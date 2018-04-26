@@ -57,20 +57,44 @@ static void syslog_callback(char c, void *user_data)
 
 static int start_logging(void)
 {
-#if 0
-	idevice_error_t ret = idevice_new(&device, udid);
-	if (ret != IDEVICE_E_SUCCESS) {
-		fprintf(stderr, "Device with udid %s not found!?\n", udid);
+	lockdownd_client_t lockdown = NULL;
+	lockdownd_error_t lerr = lockdownd_client_new_with_handshake(device, &lockdown, "idevicesyslog");
+	if (lerr != LOCKDOWN_E_SUCCESS) {
+		fprintf(stderr, "ERROR: Could not connect to lockdownd: %d\n", lerr);
+		idevice_free(device);
+		device = NULL;
 		return -1;
 	}
-#endif
-	/* start and connect to syslog_relay service */
+
+	/* start syslog_relay service */
+	lockdownd_service_descriptor_t svc = NULL;
+	lerr = lockdownd_start_service(lockdown, SYSLOG_RELAY_SERVICE_NAME, &svc);
+	if (lerr == LOCKDOWN_E_PASSWORD_PROTECTED) {
+		fprintf(stderr, "*** Device is passcode protected, enter passcode on the device to continue ***\n");
+		while (1) {
+			lerr = lockdownd_start_service(lockdown, SYSLOG_RELAY_SERVICE_NAME, &svc);
+			if (lerr != LOCKDOWN_E_PASSWORD_PROTECTED) {
+				break;
+			}
+			sleep(1);
+		}
+	}
+	if (lerr != LOCKDOWN_E_SUCCESS) {
+		fprintf(stderr, "ERROR: Could not connect to lockdownd: %d\n", lerr);
+		idevice_free(device);
+		device = NULL;
+		return -1;
+	}
+	lockdownd_client_free(lockdown);
+
+	/* connect to syslog_relay service */
 	syslog_relay_error_t serr = SYSLOG_RELAY_E_UNKNOWN_ERROR;
-	serr = syslog_relay_client_start_service(device, &syslog, "idevicesyslog");
+	serr = syslog_relay_client_new(device, svc, &syslog);
+	lockdownd_service_descriptor_free(svc);
 	if (serr != SYSLOG_RELAY_E_SUCCESS) {
 		fprintf(stderr, "ERROR: Could not start service com.apple.syslog_relay.\n");
-		//idevice_free(device);
-		//device = NULL;
+		idevice_free(device);
+		device = NULL;
 		return -1;
 	}
 
@@ -80,8 +104,6 @@ static int start_logging(void)
 		fprintf(stderr, "ERROR: Unable tot start capturing syslog.\n");
 		syslog_relay_client_free(syslog);
 		syslog = NULL;
-		//idevice_free(device);
-		//device = NULL;
 		return -1;
 	}
 
@@ -100,12 +122,6 @@ static void stop_logging(void)
 		syslog = NULL;
 	}
 
-#if 0
-	if (device) {
-		idevice_free(device);
-		device = NULL;
-	}
-#endif
 }
 
 static void device_event_cb(const idevice_event_t* event, void* userdata)
