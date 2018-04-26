@@ -26,13 +26,17 @@
 #include <config.h>
 #endif
 
-#include <usbmuxd.h>
 #ifdef HAVE_OPENSSL
-#include <openssl/ssl.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #else
-#include <gnutls/gnutls.h>
+#include <libtasn1.h>
 #include <gnutls/x509.h>
+#include <gnutls/crypto.h>
 #endif
+
+#include <usbmuxd.h>
 
 #ifdef WIN32
 #define LIBIMOBILEDEVICE_API __declspec( dllexport )
